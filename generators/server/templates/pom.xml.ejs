@@ -45,6 +45,12 @@
             </releases>
         </repository>
         <%_ } _%>
+        <%_ if (cacheProvider === 'ignite') { _%>
+        <repository>
+            <id>GridGain Repository</id>
+            <url>http://www.gridgainsystems.com/nexus/content/repositories/external</url>
+        </repository>
+        <%_ } _%>
         <!-- jhipster-needle-maven-repository -->
     </repositories>
 
@@ -107,7 +113,11 @@
         <liquibase-hibernate5.version>4.2.2</liquibase-hibernate5.version>
     <%_ } _%>
     <%_ if (devDatabaseType === 'h2Disk') { _%>
+            <%_ if (cacheProvider === 'ignite') { _%>
+        <h2.version>1.4.197</h2.version>
+            <%_ } else { _%>
         <h2.version>1.4.200</h2.version>
+            <%_ } _%>
     <%_ } _%>
         <validation-api.version>2.0.1.Final</validation-api.version>
 <%_ } _%>
@@ -321,6 +331,22 @@
             <scope>test</scope>
         </dependency>
 <%_ } _%>
+<%_ if (cacheProvider === 'ignite') { _%>
+        <dependency>
+            <groupId>org.apache.ignite</groupId>
+            <artifactId>ignite-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.ignite</groupId>
+            <artifactId>ignite-spring</artifactId>
+        </dependency>
+    <%_ if (enableHibernateCache) { _%>
+        <dependency>
+            <groupId>org.gridgain</groupId>
+            <artifactId>ignite-hibernate_5.3</artifactId>
+        </dependency>
+    <%_ } _%>
+<%_ } _%>
         <dependency>
             <groupId>io.springfox</groupId>
             <artifactId>springfox-oas</artifactId>
@@ -426,7 +452,7 @@
             <scope>test</scope>
         </dependency>
 <%_ } _%>
-<%_ if (['ehcache', 'caffeine', 'hazelcast', 'infinispan', 'memcached'].includes(cacheProvider)) { _%>
+<%_ if (['ehcache', 'caffeine', 'hazelcast', 'infinispan', 'memcached', 'ignite'].includes(cacheProvider)) { _%>
         <dependency>
             <groupId>javax.cache</groupId>
             <artifactId>cache-api</artifactId>
@@ -1557,6 +1583,7 @@
                 <dependency>
                     <groupId>com.h2database</groupId>
                     <artifactId>h2</artifactId>
+                    <version>${h2.version}</version>
                 </dependency>
         <%_ if (reactive) { _%>
                 <dependency>
@@ -1633,6 +1660,7 @@
                 <dependency>
                     <groupId>com.h2database</groupId>
                     <artifactId>h2</artifactId>
+                    <version>${h2.version}</version>
                 </dependency>
     <%_ if (reactive) { _%>
                 <dependency>

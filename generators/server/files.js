@@ -985,6 +985,16 @@ const serverFiles = {
             ],
         },
         {
+            condition: generator => ['ignite'].includes(generator.cacheProvider),
+            path: SERVER_MAIN_SRC_DIR,
+            templates: [
+                {
+                    file: 'package/config/IgniteConfiguration.java',
+                    renameTo: generator => `${generator.javaDir}config/CacheConfiguration.java`,
+                },
+            ],
+        },
+        {
             condition: generator => generator.cacheProvider === 'infinispan',
             path: SERVER_MAIN_SRC_DIR,
             templates: [

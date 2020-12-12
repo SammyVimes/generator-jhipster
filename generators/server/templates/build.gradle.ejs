@@ -338,7 +338,14 @@ dependencies {
     implementation "org.hibernate:hibernate-jcache"
         <%_ } _%>
     <%_ } _%>
-    <%_ if (['ehcache', 'caffeine', 'hazelcast', 'infinispan', 'redis'].includes(cacheProvider) || applicationType === 'gateway') { _%>
+    <%_ if (cacheProvider === 'ignite') { _%>
+    implementation "org.apache.ignite:ignite-core"
+    implementation "org.apache.ignite:ignite-spring"
+    <%_ } _%>
+    <%_ if (cacheProvider === 'ignite' && enableHibernateCache) { _%>
+    implementation "org.gridgain:ignite-hibernate_5.3"
+    <%_ } _%>
+    <%_ if (['ehcache', 'caffeine', 'hazelcast', 'infinispan', 'redis', 'ignite'].includes(cacheProvider) || applicationType === 'gateway') { _%>
     implementation "javax.cache:cache-api"
     <%_ } _%>
     <%_ if (databaseType === 'sql') { _%>

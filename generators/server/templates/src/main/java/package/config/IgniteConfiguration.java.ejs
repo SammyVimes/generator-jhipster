@@ -1,0 +1,210 @@
+<%#
+ Copyright 2013-2020 the original author or authors from the JHipster project.
+
+ This file is part of the JHipster project, see https://www.jhipster.tech/
+ for more information.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+      https://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-%>
+package <%= packageName %>.config;
+
+import java.lang.reflect.Field;
+import java.net.InetSocketAddress;
+import java.util.List;
+import java.util.stream.Collectors;
+import javax.annotation.PreDestroy;
+import org.apache.ignite.Ignite;
+import org.apache.ignite.IgniteCheckedException;
+import org.apache.ignite.Ignition;
+import org.apache.ignite.cache.eviction.lru.LruEvictionPolicy;
+import org.apache.ignite.cache.hibernate.HibernateRegionFactory;
+import org.apache.ignite.cache.spring.SpringCacheManager;
+import org.apache.ignite.configuration.IgniteConfiguration;
+import org.apache.ignite.internal.IgnitionEx;
+import org.apache.ignite.spi.discovery.tcp.TcpDiscoverySpi;
+import org.apache.ignite.spi.discovery.tcp.ipfinder.vm.TcpDiscoveryVmIpFinder;
+import org.hibernate.cfg.AvailableSettings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.orm.jpa.HibernatePropertiesCustomizer;
+import org.springframework.boot.autoconfigure.web.ServerProperties;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.cloud.client.serviceregistry.Registration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
+import tech.jhipster.config.JHipsterConstants;
+
+@Configuration
+@EnableCaching
+public class CacheConfiguration {
+
+    private final Logger log = LoggerFactory.getLogger(CacheConfiguration.class);
+
+    private final Environment env;
+
+    // if (serviceDiscoveryType === 'eureka' || serviceDiscoveryType === 'consul')
+    private final ServerProperties serverProperties;
+
+    private final DiscoveryClient discoveryClient;
+
+    private final String igniteInstanceName;
+
+    private Registration registration;
+
+    public CacheConfiguration(Environment env, ServerProperties serverProperties, DiscoveryClient discoveryClient, @Value("${org.apache.ignite.instance_name:ignite}") String igniteInstanceName) {
+        this.env = env;
+        this.serverProperties = serverProperties;
+        this.discoveryClient = discoveryClient;
+        this.igniteInstanceName = igniteInstanceName;
+    }
+
+    @Bean
+    public SpringCacheManager cacheManager(Ignite ignite) {
+        final SpringCacheManager springCacheManager = new SpringCacheManager();
+
+        try {
+            final Field igniteField = SpringCacheManager.class.getDeclaredField("ignite");
+            igniteField.setAccessible(true);
+            igniteField.set(springCacheManager, ignite);
+            igniteField.setAccessible(false);
+        } catch (IllegalAccessException | NoSuchFieldException e) {
+            throw new RuntimeException(e);
+        }
+
+        springCacheManager.setDynamicCacheConfiguration(initializeDefaultConfig());
+
+        return springCacheManager;
+    }
+
+    @Bean
+    public HibernateRegionFactory f(Ignite ignite) {
+        return new HibernateRegionFactory();
+    }
+
+    @Bean
+    public HibernatePropertiesCustomizer hibernatePropertiesCustomizer(HibernateRegionFactory cacheFactoryConfiguration) {
+        return hibernateProperties -> {
+            hibernateProperties.put(AvailableSettings.CACHE_REGION_FACTORY, cacheFactoryConfiguration);
+            hibernateProperties.put("org.apache.ignite.hibernate.ignite_instance_name", igniteInstanceName);
+        };
+    }
+
+    @Bean
+    public Ignite ignite() throws IgniteCheckedException {
+        IgniteConfiguration cfg = new IgniteConfiguration();
+
+        cfg.setIgniteInstanceName(igniteInstanceName);
+
+        cfg.setCacheConfiguration(initializeDomainConfig());
+
+        // discovery
+        if (this.registration == null) {
+            log.warn("No discovery service is set up, Ignite cannot create a cluster.");
+        } else {
+            // The serviceId is by default the application's name,
+            // see the "spring.application.name" standard Spring property
+            String serviceId = registration.getServiceId();
+            log.debug("Configuring Ignite clustering for instanceId: {}", serviceId);
+
+            final TcpDiscoverySpi discoSpi = new TcpDiscoverySpi();
+
+            cfg.setDiscoverySpi(discoSpi);
+
+            final TcpDiscoveryVmIpFinder ipFinder = new TcpDiscoveryVmIpFinder();
+
+            discoSpi.setIpFinder(ipFinder);
+
+            // In development, everything goes through 127.0.0.1, with a different port
+            if (env.acceptsProfiles(Profiles.of(JHipsterConstants.SPRING_PROFILE_DEVELOPMENT))) {
+                log.debug("Application is running with the \"dev\" profile, Ignite " + "cluster will only work with localhost instances");
+
+                discoSpi.setLocalPort(serverProperties.getPort() + 47500);
+
+                final List<InetSocketAddress> addrs = discoveryClient
+                    .getInstances(serviceId)
+                    .stream()
+                    .map(
+                        instance -> {
+                            return InetSocketAddress.createUnresolved("127.0.0.1", (instance.getPort() + 47500));
+                        }
+                    )
+                    .collect(Collectors.toList());
+
+                log.debug("Adding Apache Ignite (dev) cluster members {}", addrs);
+                ipFinder.registerAddresses(addrs);
+            } else { // Production configuration, one host per instance all using port 5701
+                final List<InetSocketAddress> addrs = discoveryClient
+                    .getInstances(serviceId)
+                    .stream()
+                    .map(
+                        instance -> {
+                            return InetSocketAddress.createUnresolved(instance.getHost(), 47500);
+                        }
+                    )
+                    .collect(Collectors.toList());
+
+                log.debug("Adding Apache Ignite (production) cluster members {}", addrs);
+                ipFinder.registerAddresses(addrs);
+            }
+        }
+
+        // In development, remove multicast auto-configuration
+        if (env.acceptsProfiles(Profiles.of(JHipsterConstants.SPRING_PROFILE_DEVELOPMENT))) {
+            cfg.setLocalHost("127.0.0.1");
+        }
+
+        return IgnitionEx.start(cfg);
+    }
+
+    private org.apache.ignite.configuration.CacheConfiguration<Object, Object> initializeDomainConfig() {
+        org.apache.ignite.configuration.CacheConfiguration<Object, Object> ccfg = new org.apache.ignite.configuration.CacheConfiguration<>();
+        ccfg.setName("com.mycompany.myapp.domain.*");
+        ccfg.setBackups(3);
+
+        ccfg.setEvictionPolicyFactory(
+            () -> {
+                final LruEvictionPolicy<Object, Object> lruEvictionPolicy = new LruEvictionPolicy<>();
+                lruEvictionPolicy.setMaxMemorySize(Long.MAX_VALUE);
+                return lruEvictionPolicy;
+            }
+        );
+
+        return ccfg;
+    }
+
+    private org.apache.ignite.configuration.CacheConfiguration<Object, Object> initializeDefaultConfig() {
+        org.apache.ignite.configuration.CacheConfiguration<Object, Object> ccfg = new org.apache.ignite.configuration.CacheConfiguration<>();
+
+        ccfg.setBackups(3);
+
+        ccfg.setEvictionPolicyFactory(
+            () -> {
+                final LruEvictionPolicy<Object, Object> lruEvictionPolicy = new LruEvictionPolicy<>();
+                lruEvictionPolicy.setMaxMemorySize(Long.MAX_VALUE);
+                return lruEvictionPolicy;
+            }
+        );
+
+        return ccfg;
+    }
+
+    @PreDestroy
+    public void destroy() {
+        log.info("Closing Cache Manager");
+        Ignition.stopAll(true);
+    }
+}

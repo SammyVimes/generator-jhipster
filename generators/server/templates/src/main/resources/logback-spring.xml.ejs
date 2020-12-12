@@ -66,6 +66,9 @@
     <%_ if (cacheProvider === 'redis') { _%>
     <logger name="org.redisson" level="WARN" />
     <%_ } _%>
+    <%_ if (cacheProvider === 'ignite') { _%>
+    <logger name="org.apache.ignite" level="INFO" />
+    <%_ } _%>
     <%_ if (applicationType === 'microservice' || applicationType === 'gateway' || serviceDiscoveryType === 'eureka') { _%>
     <logger name="com.netflix" level="WARN"/>
     <logger name="com.netflix.config.sources.URLConfigurationSource" level="ERROR"/>

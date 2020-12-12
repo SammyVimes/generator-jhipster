@@ -256,6 +256,10 @@ function askForServerSideOpts() {
                     name: 'Redis (distributed cache)',
                 },
                 {
+                    value: 'ignite',
+                    name: 'Apache Ignite (distributed cache, for multiple nodes, supports rate-limiting for gateway applications)',
+                },
+                {
                     value: 'no',
                     name: 'No cache - Warning, when using an SQL database, this will disable the Hibernate 2nd level cache!',
                 },
